@@ -74,9 +74,10 @@ export function flattenNamespaceExports(options: FlattenNsOptions = {}): Plugin 
       if (id.includes('node_modules')) return
 
       const hasNamespaceExports = code.includes('export * as')
+      const hasNamedReExports = code.includes('} from')
 
-      // Pass 2: Barrel flattening
-      if (hasNamespaceExports && isBarrel(id)) {
+      // Pass 2: Barrel flattening (handles export * as AND export { X } patterns)
+      if (isBarrel(id) && (hasNamespaceExports || hasNamedReExports)) {
         const { jsCode, ast } = await parseAsJS(code, id)
         const seen = new Set<string>()
 
