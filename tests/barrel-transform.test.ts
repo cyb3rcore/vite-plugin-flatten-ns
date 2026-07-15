@@ -33,7 +33,7 @@ describe('flattenBarrelSource', () => {
       `export * as Dialog from './dialog'`,
       '/src/ui/index.ts',
       { '/src/ui/dialog.ts': 'export const Root = "root"\nexport const Trigger = "trigger"' },
-      `export * as Dialog from './dialog'\nexport { Root as DialogRoot, Trigger as DialogTrigger } from './dialog'`
+      `export * as Dialog from './dialog'\nexport { Root as DialogRoot, Trigger as DialogTrigger } from './dialog';`
     )
   })
 
@@ -43,7 +43,7 @@ describe('flattenBarrelSource', () => {
       '/src/ui/dialog.ts': 'export const Root = "root"',
       '/src/ui/card.ts': 'export const Header = "header"',
     }
-    const expected = `export * as Dialog from './dialog'\nexport { Root as DialogRoot } from './dialog'\nexport * as Card from './card'\nexport { Header as CardHeader } from './card'`
+    const expected = `export * as Dialog from './dialog'\nexport { Root as DialogRoot } from './dialog';\nexport * as Card from './card'\nexport { Header as CardHeader } from './card';`
     await t(barrel, '/src/ui/index.ts', files, expected)
   })
 
@@ -52,7 +52,7 @@ describe('flattenBarrelSource', () => {
       `export * as Dialog from './dialog'`,
       '/src/ui/index.ts',
       { '/src/ui/dialog.ts': 'export { Root, Trigger } from "./internal"' },
-      `export * as Dialog from './dialog'\nexport { Root as DialogRoot, Trigger as DialogTrigger } from './dialog'`
+      `export * as Dialog from './dialog'\nexport { Root as DialogRoot, Trigger as DialogTrigger } from './dialog';`
     )
   })
 
@@ -83,7 +83,7 @@ describe('flattenBarrelSource', () => {
       `export * as Card from './card'`,
       '/src/ui/index.ts',
       { '/src/ui/card.ts': 'export const Root = "root"\nexport const Card = { Root }' },
-      `export * as Card from './card'\nexport { Root as CardRoot } from './card'`
+      `export * as Card from './card'\nexport { Root as CardRoot } from './card';`
     )
   })
 

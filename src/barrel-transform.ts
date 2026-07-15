@@ -46,7 +46,8 @@ export async function flattenBarrelSource(
   resolve: (source: string, importer: string) => Promise<ResolveResult>,
   load: (id: string) => Promise<LoadResult>,
   importer: string,
-  warn?: (msg: string) => void
+  warn?: (msg: string) => void,
+  parseModule?: (code: string) => Promise<Program>,
 ): Promise<string | null> {
   // Find all export * as <name> declarations
   const nsExports = ast.body.filter(isNsExport)
@@ -72,10 +73,12 @@ export async function flattenBarrelSource(
     const loaded = await load(resolvedId)
     if (!loaded) continue
 
-    // Parse the loaded module's AST
+    // Parse the loaded module's AST (using custom parser if provided, e.g. for TS stripping)
     let moduleAst: Program
     try {
-      moduleAst = await parseAstAsync(loaded.code)
+      moduleAst = parseModule
+        ? await parseModule(loaded.code)
+        : await parseAstAsync(loaded.code)
     } catch {
       // If parsing fails, skip this namespace
       continue
@@ -109,7 +112,7 @@ export async function flattenBarrelSource(
     if (specifiers.length === 0) continue
 
     // Inject the flat export after the * as declaration
-    const flatExport = `\nexport { ${specifiers.join(', ')} } from '${source}'`
+    const flatExport = `\nexport { ${specifiers.join(', ')} } from '${source}';`
     s.appendLeft(node.end, flatExport)
     changed = true
   }

@@ -9,6 +9,39 @@ export type FlattenNsOptions = {
   keepNamespaceExports?: boolean
 }
 
+/**
+ * Strip TypeScript syntax so Rollup's JS-only parser doesn't choke.
+ * Uses esbuild which is guaranteed present (Vite dependency).
+ */
+let _esbuild: any | undefined
+async function getEsbuild() {
+  if (!_esbuild) {
+    // Dynamic import — require() is not available in ESM context
+    _esbuild = await import('esbuild')
+  }
+  return _esbuild
+}
+
+async function stripTS(code: string, id: string): Promise<string> {
+  if (!id.endsWith('.ts') && !id.endsWith('.tsx')) return code
+  try {
+    const esbuild = await getEsbuild()
+    const result = esbuild.transformSync(code, {
+      loader: id.endsWith('.tsx') ? 'tsx' : 'ts',
+    })
+    return result.code
+  } catch {
+    return code
+  }
+}
+
+/** Parse code to AST, stripping TS first if needed. Returns both JS code and AST. */
+async function parseAsJS(code: string, id: string): Promise<{ jsCode: string; ast: import('estree').Program }> {
+  const jsCode = await stripTS(code, id)
+  const ast = await parseAstAsync(jsCode)
+  return { jsCode, ast }
+}
+
 export function flattenNamespaceExports(options: FlattenNsOptions = {}): Plugin {
   const {
     include = ['**/components/ui/index.ts', '**/ui/index.ts'],
@@ -28,16 +61,15 @@ export function flattenNamespaceExports(options: FlattenNsOptions = {}): Plugin 
     async transform(code: string, id: string) {
       if (id.includes('node_modules')) return
 
-      const ast = await parseAstAsync(code)
       const hasNamespaceExports = code.includes('export * as')
 
-      // Pass 2: Barrel flattening — uses include filter, not hardcoded heuristic
+      // Pass 2: Barrel flattening
       if (hasNamespaceExports && isBarrel(id)) {
-        // Track resolved IDs to detect circular re-exports
+        const { jsCode, ast } = await parseAsJS(code, id)
         const seen = new Set<string>()
 
         const result = await flattenBarrelSource(
-          code, ast,
+          jsCode, ast,
           async (source, importer) => {
             const r = await this.resolve(source, importer)
             const resolved = r?.id ?? null
@@ -56,15 +88,17 @@ export function flattenNamespaceExports(options: FlattenNsOptions = {}): Plugin 
             } catch { return null }
           },
           id,
-          // Pass warn function for name collision warnings
           (msg: string) => this.warn(msg),
+          // Parse loaded modules as JS (strips TS first)
+          async (moduleCode) => (await parseAsJS(moduleCode, id)).ast,
         )
         if (result) return { code: result, map: { mappings: '' } }
       }
 
-      // Pass 1: Component enrichment — only for component files matching includeComponents
+      // Pass 1: Component enrichment
       if (isComponent(id)) {
-        const result = enrichComponentSource(code, ast)
+        const { jsCode, ast } = await parseAsJS(code, id)
+        const result = enrichComponentSource(jsCode, ast)
         if (result) return { code: result, map: { mappings: '' } }
       }
     },
