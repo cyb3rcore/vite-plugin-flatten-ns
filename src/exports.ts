@@ -1,4 +1,4 @@
-import type { Program, Pattern } from 'estree'
+import type { Program, Pattern, AssignmentProperty } from 'estree'
 
 /**
  * Extract identifier names from a destructuring pattern.
@@ -9,7 +9,9 @@ export function extractNames(node: Pattern): string[] {
     return [node.name]
   }
   if (node.type === 'ObjectPattern') {
-    return node.properties.flatMap(prop => extractNames(prop.value))
+    return node.properties
+      .filter((prop): prop is AssignmentProperty => prop.type === 'Property')
+      .flatMap(prop => extractNames(prop.value))
   }
   if (node.type === 'ArrayPattern') {
     return node.elements.filter((el): el is Pattern => el !== null).flatMap(extractNames)
@@ -35,7 +37,7 @@ export function extractNamedValueExports(ast: Program): string[] {
     if (node.type !== 'ExportNamedDeclaration') continue
 
     // Skip type-only exports at the declaration level
-    if (node.exportKind === 'type') continue
+    if ((node as { exportKind?: 'type' | 'value' }).exportKind === 'type') continue
 
     const decl = node.declaration
 
@@ -52,8 +54,10 @@ export function extractNamedValueExports(ast: Program): string[] {
       for (const spec of node.specifiers) {
         if (spec.type === 'ExportSpecifier') {
           // Handle inline type qualifier on individual specifiers
-          if (spec.exportKind === 'type') continue
-          names.push(spec.exported.name)
+          if ((spec as { exportKind?: 'type' | 'value' }).exportKind === 'type') continue
+          if (spec.exported.type === 'Identifier') {
+            names.push(spec.exported.name)
+          }
         }
       }
     }
@@ -97,6 +101,11 @@ export function findCompoundObjectProperties(ast: Program, namespaceName: string
  * Returns position info and whether the declaration is exported.
  * Only checks `ast.body` (module scope) — skips block-scoped declarations.
  */
+// Rollup/Vite AST nodes include start/end via RollupAstNode,
+// but @types/estree doesn't define them. Cast through unknown.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+type NodePos = { start: number; end: number }
+
 export function findLocalDeclarations(
   ast: Program,
   names: string[]
@@ -113,26 +122,26 @@ export function findLocalDeclarations(
         for (const d of decl.declarations) {
           for (const name of extractNames(d.id)) {
             if (targetSet.has(name) && !result.has(name)) {
-              result.set(name, { start: decl.start!, end: decl.end!, hasExport: true })
+              result.set(name, { start: (decl as unknown as NodePos).start, end: (decl as unknown as NodePos).end, hasExport: true })
             }
           }
         }
       } else if (decl.type === 'FunctionDeclaration' || decl.type === 'ClassDeclaration') {
         if (decl.id && targetSet.has(decl.id.name) && !result.has(decl.id.name)) {
-          result.set(decl.id.name, { start: decl.start!, end: decl.end!, hasExport: true })
+          result.set(decl.id.name, { start: (decl as unknown as NodePos).start, end: (decl as unknown as NodePos).end, hasExport: true })
         }
       }
     } else if (node.type === 'VariableDeclaration') {
       for (const d of node.declarations) {
         for (const name of extractNames(d.id)) {
           if (targetSet.has(name) && !result.has(name)) {
-            result.set(name, { start: node.start!, end: node.end!, hasExport: false })
+            result.set(name, { start: (node as unknown as NodePos).start, end: (node as unknown as NodePos).end, hasExport: false })
           }
         }
       }
     } else if (node.type === 'FunctionDeclaration' || node.type === 'ClassDeclaration') {
       if (node.id && targetSet.has(node.id.name) && !result.has(node.id.name)) {
-        result.set(node.id.name, { start: node.start!, end: node.end!, hasExport: false })
+        result.set(node.id.name, { start: (node as unknown as NodePos).start, end: (node as unknown as NodePos).end, hasExport: false })
       }
     }
   }

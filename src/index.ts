@@ -51,7 +51,8 @@ export function flattenNamespaceExports(options: FlattenNsOptions = {}): Plugin 
           async (resolvedId) => {
             try {
               const loaded = await this.load({ id: resolvedId })
-              return loaded ? { code: loaded.code } : null
+              if (!loaded || !loaded.code) return null
+              return { code: loaded.code }
             } catch { return null }
           },
           id,

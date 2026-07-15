@@ -13,6 +13,8 @@ function getId(resolved: Exclude<ResolveResult, null>): string {
 function isNsExport(node: unknown): node is ExportAllDeclaration & {
   exported: { type: 'Identifier'; name: string }
   source: { type: 'Literal'; value: string }
+  start: number
+  end: number
 } {
   if (!node || typeof node !== 'object') return false
   const n = node as Record<string, unknown>
@@ -108,7 +110,7 @@ export async function flattenBarrelSource(
 
     // Inject the flat export after the * as declaration
     const flatExport = `\nexport { ${specifiers.join(', ')} } from '${source}'`
-    s.appendLeft(node.end!, flatExport)
+    s.appendLeft(node.end, flatExport)
     changed = true
   }
 
