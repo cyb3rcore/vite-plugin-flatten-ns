@@ -15,9 +15,6 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
 
-      - name: Configure npm auth
-        run: echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > .npmrc
-
       - name: Create Release Pull Request or Publish
         uses: changesets/action@v1
         with:
