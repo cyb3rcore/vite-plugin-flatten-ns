@@ -1,5 +1,6 @@
 import type { Plugin } from 'vite'
 import { parseAstAsync, createFilter } from 'vite'
+import { readFileSync } from 'node:fs'
 import { enrichComponentSource } from './component-enrich.js'
 import { flattenBarrelSource } from './barrel-transform.js'
 
@@ -9,14 +10,23 @@ export type FlattenNsOptions = {
   keepNamespaceExports?: boolean
 }
 
+/** Cache for Pass-1-enriched source code, keyed by resolved file path. */
+const enrichedCache = new Map<string, string>()
+
+/** Strip Vite query/version parameters from a file id. */
+function cleanId(id: string): string {
+  return id.split('?')[0]
+}
+
 /**
  * Strip TypeScript syntax so Rollup's JS-only parser doesn't choke.
  * Uses esbuild which is guaranteed present (Vite dependency).
+ * Uses `jsx: 'automatic'` so JSX compiles to `jsx()` from react/jsx-runtime
+ * rather than `React.createElement` (which would cause React-not-defined errors).
  */
 let _esbuild: any | undefined
 async function getEsbuild() {
   if (!_esbuild) {
-    // Dynamic import — require() is not available in ESM context
     _esbuild = await import('esbuild')
   }
   return _esbuild
@@ -28,6 +38,8 @@ async function stripTS(code: string, id: string): Promise<string> {
     const esbuild = await getEsbuild()
     const result = esbuild.transformSync(code, {
       loader: id.endsWith('.tsx') ? 'tsx' : 'ts',
+      jsx: 'automatic',
+      jsxImportSource: 'react',
     })
     return result.code
   } catch {
@@ -80,17 +92,33 @@ export function flattenNamespaceExports(options: FlattenNsOptions = {}): Plugin 
             if (resolved) seen.add(resolved)
             return resolved
           },
+          // Load module code — check enriched cache first, fall back to fs read
+          // this.load() is not available in the transform hook, so we read files directly.
           async (resolvedId) => {
+            const clean = cleanId(resolvedId)
+            const cached = enrichedCache.get(clean)
+            if (cached) return { code: cached }
             try {
-              const loaded = await this.load({ id: resolvedId })
-              if (!loaded || !loaded.code) return null
-              return { code: loaded.code }
-            } catch { return null }
+              const raw = readFileSync(clean, 'utf-8')
+              // If this module is a component file that hasn't been enriched yet,
+              // enrich it inline now so Pass 2 sees the named exports.
+              if (isComponent(clean)) {
+                const { jsCode, ast } = await parseAsJS(raw, clean)
+                const enriched = enrichComponentSource(jsCode, ast)
+                if (enriched) {
+                  enrichedCache.set(clean, enriched)
+                  return { code: enriched }
+                }
+              }
+              return { code: raw }
+            } catch {
+              return null
+            }
           },
           id,
           (msg: string) => this.warn(msg),
-          // Parse loaded modules as JS (strips TS first)
-          async (moduleCode) => (await parseAsJS(moduleCode, id)).ast,
+          // Parse loaded modules as JS (strips TS first — uses moduleId for correct ts/tsx loader)
+          async (moduleCode, moduleId) => (await parseAsJS(moduleCode, moduleId)).ast,
         )
         if (result) return { code: result, map: { mappings: '' } }
       }
@@ -99,7 +127,10 @@ export function flattenNamespaceExports(options: FlattenNsOptions = {}): Plugin 
       if (isComponent(id)) {
         const { jsCode, ast } = await parseAsJS(code, id)
         const result = enrichComponentSource(jsCode, ast)
-        if (result) return { code: result, map: { mappings: '' } }
+        if (result) {
+          enrichedCache.set(cleanId(id), result)
+          return { code: result, map: { mappings: '' } }
+        }
       }
     },
   }

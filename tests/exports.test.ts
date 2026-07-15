@@ -75,7 +75,7 @@ describe('findCompoundObjectProperties', () => {
 
   test('skips computed/dynamic property keys', async () => {
     const ast = await parse('export const X = { [key]: val, static: val2 }')
-    expect(findCompoundObjectProperties(ast, 'X')).toEqual(['static'])
+    expect(findCompoundObjectProperties(ast, 'X')).toEqual(['val2'])
   })
 
   test('skips spread elements', async () => {

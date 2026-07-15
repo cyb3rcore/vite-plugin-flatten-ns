@@ -87,7 +87,11 @@ export function findCompoundObjectProperties(ast: Program, namespaceName: string
       if (prop.type === 'SpreadElement') return []
       if (prop.computed) return []
       if (prop.type === 'Property' && prop.key.type === 'Identifier') {
-        return [prop.key.name]
+        // For shorthand { Root }, key === value name
+        // For { Root: BentoGridRoot }, use the VALUE identifier (the actual variable name)
+        if (prop.shorthand || prop.value.type === 'Identifier') {
+          return [prop.value.type === 'Identifier' ? prop.value.name : prop.key.name]
+        }
       }
       return []
     })

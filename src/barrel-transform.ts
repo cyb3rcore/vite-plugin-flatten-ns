@@ -47,7 +47,7 @@ export async function flattenBarrelSource(
   load: (id: string) => Promise<LoadResult>,
   importer: string,
   warn?: (msg: string) => void,
-  parseModule?: (code: string) => Promise<Program>,
+  parseModule?: (code: string, moduleId: string) => Promise<Program>,
 ): Promise<string | null> {
   // Find all export * as <name> declarations
   const nsExports = ast.body.filter(isNsExport)
@@ -77,7 +77,7 @@ export async function flattenBarrelSource(
     let moduleAst: Program
     try {
       moduleAst = parseModule
-        ? await parseModule(loaded.code)
+        ? await parseModule(loaded.code, resolvedId)
         : await parseAstAsync(loaded.code)
     } catch {
       // If parsing fails, skip this namespace
@@ -95,7 +95,12 @@ export async function flattenBarrelSource(
     // Build specifiers for the flat export, checking for collisions
     const specifiers: string[] = []
     for (const name of filtered) {
-      const flatName = nsName + name[0].toUpperCase() + name.slice(1)
+      // If the export name already starts with the namespace name, use as-is
+      // (e.g., BentoGridRoot from BentoGrid namespace — likely from Pass 1 enrichment).
+      // Otherwise, prepend the namespace (e.g., Root → BentoGridRoot).
+      const flatName = name.startsWith(nsName)
+        ? name
+        : nsName + name[0].toUpperCase() + name.slice(1)
 
       const existing = flatNamesMap.get(flatName)
       if (existing) {
