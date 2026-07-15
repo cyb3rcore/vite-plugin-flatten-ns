@@ -2,6 +2,12 @@
 
 ## 0.1.1
 
+### Patch Changes
+
+- d070f0e: handle non-shorthand compound object props (`{ Root: BentoGridRoot }`), add inline enrichment for Pass 2 module loading, use esbuild `jsx: 'automatic'` to avoid React-not-defined errors
+
+## 0.1.1
+
 ### Fixes
 
 - a33cab4: handle non-shorthand compound object props (`{ Root: BentoGridRoot }`), add inline enrichment for Pass 2 module loading, use esbuild `jsx: 'automatic'` to avoid React-not-defined errors
