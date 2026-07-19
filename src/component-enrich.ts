@@ -1,22 +1,16 @@
 import type { Program } from 'estree'
 import MagicString from 'magic-string'
+import { parseAstAsync } from 'vite'
 import { findCompoundObjectProperties, findLocalDeclarations } from './exports.js'
 
 /**
- * Enrich component source by prepending `export` to local declarations
- * that are referenced by compound object exports.
+ * Core enrichment logic: prepend `export` to local declarations referenced by
+ * compound object exports. Returns `null` if no changes are needed.
  *
- * For example, given:
- *   const Root = withProvider(ark.div, "root")
- *   export const Card = { Root }
- *
- * Returns:
- *   export const Root = withProvider(ark.div, "root")
- *   export const Card = { Root }
- *
- * Returns `null` if no changes were made.
+ * @param code - The source code (positions must match `ast` positions)
+ * @param ast - Parsed AST whose node positions correspond to `code`
  */
-export function enrichComponentSource(code: string, ast: Program): string | null {
+function enrichSourceImpl(code: string, ast: Program): string | null {
   // 1. Walk ast.body looking for ExportNamedDeclaration → VariableDeclaration with ObjectExpression init
   const compoundNames: string[] = []
   for (const node of ast.body) {
@@ -45,10 +39,10 @@ export function enrichComponentSource(code: string, ast: Program): string | null
   const declarations = findLocalDeclarations(ast, allPropNames)
 
   // Collect non-exported declaration positions
-  const toExport: { start: number; end: number }[] = []
+  const toExport: { start: number }[] = []
   for (const [, info] of declarations) {
     if (!info.hasExport) {
-      toExport.push({ start: info.start, end: info.end })
+      toExport.push({ start: info.start })
     }
   }
 
@@ -63,4 +57,41 @@ export function enrichComponentSource(code: string, ast: Program): string | null
   }
 
   return s.toString()
+}
+
+/**
+ * Enrich component source by prepending `export` to local declarations
+ * that are referenced by compound object exports.
+ *
+ * Operates on a code string and its pre-parsed AST. The AST positions MUST
+ * correspond to the `code` string (i.e., the code has NOT been TS-stripped
+ * if the AST was produced by a TS-aware parser).
+ *
+ * For example, given:
+ *   const Root = withProvider(ark.div, "root")
+ *   export const Card = { Root }
+ *
+ * Returns:
+ *   export const Root = withProvider(ark.div, "root")
+ *   export const Card = { Root }
+ *
+ * Returns `null` if no changes were made.
+ */
+export function enrichComponentSource(code: string, ast: Program): string | null {
+  return enrichSourceImpl(code, ast)
+}
+
+/**
+ * Enrich component source from raw TypeScript/TSX code.
+ *
+ * Parses the code with Vite's `parseAstAsync` (uses oxc, handles TS natively)
+ * so that AST positions match the original source exactly — unlike the
+ * esbuild-stripped path which shifts positions when generic syntax (`<Props>`)
+ * is removed.
+ *
+ * Type annotations are preserved in the output.
+ */
+export async function enrichComponentSourceWithTS(rawCode: string): Promise<string | null> {
+  const ast = await parseAstAsync(rawCode)
+  return enrichSourceImpl(rawCode, ast)
 }

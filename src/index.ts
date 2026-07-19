@@ -1,7 +1,7 @@
 import type { Plugin } from 'vite'
 import { parseAstAsync, createFilter } from 'vite'
 import { readFileSync } from 'node:fs'
-import { enrichComponentSource } from './component-enrich.js'
+import { enrichComponentSourceWithTS } from './component-enrich.js'
 import { flattenBarrelSource } from './barrel-transform.js'
 
 export type FlattenNsOptions = {
@@ -104,8 +104,7 @@ export function flattenNamespaceExports(options: FlattenNsOptions = {}): Plugin 
               // If this module is a component file that hasn't been enriched yet,
               // enrich it inline now so Pass 2 sees the named exports.
               if (isComponent(clean)) {
-                const { jsCode, ast } = await parseAsJS(raw, clean)
-                const enriched = enrichComponentSource(jsCode, ast)
+                const enriched = await enrichComponentSourceWithTS(raw)
                 if (enriched) {
                   enrichedCache.set(clean, enriched)
                   return { code: enriched }
@@ -124,10 +123,9 @@ export function flattenNamespaceExports(options: FlattenNsOptions = {}): Plugin 
         if (result) return { code: result, map: { mappings: '' } }
       }
 
-      // Pass 1: Component enrichment
+      // Pass 1: Component enrichment — use TS-native parser so generic syntax positions are correct
       if (isComponent(id)) {
-        const { jsCode, ast } = await parseAsJS(code, id)
-        const result = enrichComponentSource(jsCode, ast)
+        const result = await enrichComponentSourceWithTS(code)
         if (result) {
           enrichedCache.set(cleanId(id), result)
           return { code: result, map: { mappings: '' } }
