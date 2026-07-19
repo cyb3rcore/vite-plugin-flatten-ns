@@ -84,14 +84,17 @@ export function enrichComponentSource(code: string, ast: Program): string | null
 /**
  * Enrich component source from raw TypeScript/TSX code.
  *
- * Parses the code with Vite's `parseAstAsync` (uses oxc, handles TS natively)
- * so that AST positions match the original source exactly — unlike the
- * esbuild-stripped path which shifts positions when generic syntax (`<Props>`)
- * is removed.
+ * Parses the code with Vite's `parseAstAsync`. In Vite 6, this used oxc directly
+ * which handled TS by default. In Vite 8+, parseAstAsync delegates to Rolldown
+ * which defaults to `lang: "js"` — pass the filename so the correct TS/TSX
+ * language is selected via the options argument.
  *
  * Type annotations are preserved in the output.
  */
-export async function enrichComponentSourceWithTS(rawCode: string): Promise<string | null> {
-  const ast = await parseAstAsync(rawCode)
+export async function enrichComponentSourceWithTS(rawCode: string, fileName?: string): Promise<string | null> {
+  const lang = fileName
+    ? fileName.endsWith('.tsx') ? 'tsx' as const : fileName.endsWith('.ts') ? 'ts' as const : undefined
+    : undefined
+  const ast = await parseAstAsync(rawCode, lang ? { lang } as any : undefined)
   return enrichSourceImpl(rawCode, ast)
 }

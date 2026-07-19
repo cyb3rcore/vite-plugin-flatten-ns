@@ -1,6 +1,6 @@
 import { parseAstAsync, createFilter } from 'vite';
 import { readFileSync } from 'node:fs';
-import { enrichComponentSource } from './component-enrich.js';
+import { enrichComponentSourceWithTS } from './component-enrich.js';
 import { flattenBarrelSource } from './barrel-transform.js';
 /** Cache for Pass-1-enriched source code, keyed by resolved file path. */
 const enrichedCache = new Map();
@@ -54,8 +54,9 @@ export function flattenNamespaceExports(options = {}) {
             if (id.includes('node_modules'))
                 return;
             const hasNamespaceExports = code.includes('export * as');
-            // Pass 2: Barrel flattening
-            if (hasNamespaceExports && isBarrel(id)) {
+            const hasNamedReExports = code.includes('} from');
+            // Pass 2: Barrel flattening (handles export * as AND export { X } patterns)
+            if (isBarrel(id) && (hasNamespaceExports || hasNamedReExports)) {
                 const { jsCode, ast } = await parseAsJS(code, id);
                 const seen = new Set();
                 const result = await flattenBarrelSource(jsCode, ast, async (source, importer) => {
@@ -81,8 +82,7 @@ export function flattenNamespaceExports(options = {}) {
                         // If this module is a component file that hasn't been enriched yet,
                         // enrich it inline now so Pass 2 sees the named exports.
                         if (isComponent(clean)) {
-                            const { jsCode, ast } = await parseAsJS(raw, clean);
-                            const enriched = enrichComponentSource(jsCode, ast);
+                            const enriched = await enrichComponentSourceWithTS(raw, clean);
                             if (enriched) {
                                 enrichedCache.set(clean, enriched);
                                 return { code: enriched };
@@ -99,10 +99,9 @@ export function flattenNamespaceExports(options = {}) {
                 if (result)
                     return { code: result, map: { mappings: '' } };
             }
-            // Pass 1: Component enrichment
+            // Pass 1: Component enrichment — use TS-native parser so generic syntax positions are correct
             if (isComponent(id)) {
-                const { jsCode, ast } = await parseAsJS(code, id);
-                const result = enrichComponentSource(jsCode, ast);
+                const result = await enrichComponentSourceWithTS(code, id);
                 if (result) {
                     enrichedCache.set(cleanId(id), result);
                     return { code: result, map: { mappings: '' } };

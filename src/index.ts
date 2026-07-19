@@ -104,7 +104,7 @@ export function flattenNamespaceExports(options: FlattenNsOptions = {}): Plugin 
               // If this module is a component file that hasn't been enriched yet,
               // enrich it inline now so Pass 2 sees the named exports.
               if (isComponent(clean)) {
-                const enriched = await enrichComponentSourceWithTS(raw)
+                const enriched = await enrichComponentSourceWithTS(raw, clean)
                 if (enriched) {
                   enrichedCache.set(clean, enriched)
                   return { code: enriched }
@@ -125,7 +125,7 @@ export function flattenNamespaceExports(options: FlattenNsOptions = {}): Plugin 
 
       // Pass 1: Component enrichment — use TS-native parser so generic syntax positions are correct
       if (isComponent(id)) {
-        const result = await enrichComponentSourceWithTS(code)
+        const result = await enrichComponentSourceWithTS(code, id)
         if (result) {
           enrichedCache.set(cleanId(id), result)
           return { code: result, map: { mappings: '' } }

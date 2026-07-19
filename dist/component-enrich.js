@@ -1,20 +1,14 @@
 import MagicString from 'magic-string';
+import { parseAstAsync } from 'vite';
 import { findCompoundObjectProperties, findLocalDeclarations } from './exports.js';
 /**
- * Enrich component source by prepending `export` to local declarations
- * that are referenced by compound object exports.
+ * Core enrichment logic: prepend `export` to local declarations referenced by
+ * compound object exports. Returns `null` if no changes are needed.
  *
- * For example, given:
- *   const Root = withProvider(ark.div, "root")
- *   export const Card = { Root }
- *
- * Returns:
- *   export const Root = withProvider(ark.div, "root")
- *   export const Card = { Root }
- *
- * Returns `null` if no changes were made.
+ * @param code - The source code (positions must match `ast` positions)
+ * @param ast - Parsed AST whose node positions correspond to `code`
  */
-export function enrichComponentSource(code, ast) {
+function enrichSourceImpl(code, ast) {
     // 1. Walk ast.body looking for ExportNamedDeclaration → VariableDeclaration with ObjectExpression init
     const compoundNames = [];
     for (const node of ast.body) {
@@ -48,7 +42,7 @@ export function enrichComponentSource(code, ast) {
     const toExport = [];
     for (const [, info] of declarations) {
         if (!info.hasExport) {
-            toExport.push({ start: info.start, end: info.end });
+            toExport.push({ start: info.start });
         }
     }
     if (toExport.length === 0)
@@ -60,5 +54,43 @@ export function enrichComponentSource(code, ast) {
         s.appendLeft(start, 'export ');
     }
     return s.toString();
+}
+/**
+ * Enrich component source by prepending `export` to local declarations
+ * that are referenced by compound object exports.
+ *
+ * Operates on a code string and its pre-parsed AST. The AST positions MUST
+ * correspond to the `code` string (i.e., the code has NOT been TS-stripped
+ * if the AST was produced by a TS-aware parser).
+ *
+ * For example, given:
+ *   const Root = withProvider(ark.div, "root")
+ *   export const Card = { Root }
+ *
+ * Returns:
+ *   export const Root = withProvider(ark.div, "root")
+ *   export const Card = { Root }
+ *
+ * Returns `null` if no changes were made.
+ */
+export function enrichComponentSource(code, ast) {
+    return enrichSourceImpl(code, ast);
+}
+/**
+ * Enrich component source from raw TypeScript/TSX code.
+ *
+ * Parses the code with Vite's `parseAstAsync`. In Vite 6, this used oxc directly
+ * which handled TS by default. In Vite 8+, parseAstAsync delegates to Rolldown
+ * which defaults to `lang: "js"` — pass the filename so the correct TS/TSX
+ * language is selected via the options argument.
+ *
+ * Type annotations are preserved in the output.
+ */
+export async function enrichComponentSourceWithTS(rawCode, fileName) {
+    const lang = fileName
+        ? fileName.endsWith('.tsx') ? 'tsx' : fileName.endsWith('.ts') ? 'ts' : undefined
+        : undefined;
+    const ast = await parseAstAsync(rawCode, lang ? { lang } : undefined);
+    return enrichSourceImpl(rawCode, ast);
 }
 //# sourceMappingURL=component-enrich.js.map
